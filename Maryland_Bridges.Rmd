@@ -1,0 +1,237 @@
+---
+title: "Maryland_Bridges"
+output: html_document
+date: "2026-06-22"
+---
+
+```{r}
+library(tidyverse)
+library(dplyr)
+Maryland_bridges<-read.csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/refs/heads/main/data/2018/2018-11-27/baltimore_bridges.csv")
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+Maryland_bridges%>%
+  view()
+#Checking if average tarffic is cleaned column of vehicles ?
+Maryland_bridges%>%
+  select(avg_daily_traffic,vehicles)
+
+Maryland_bridges<-Maryland_bridges %>%
+  mutate(inspection_yr=inspection_yr+2000)
+
+
+```
+Seems to
+```{r}
+Maryland_bridges%>%
+select(-vehicles)%>%
+count(lat,long,avg_daily_traffic,sort=TRUE)
+```
+Data seems to be duplicated 
+```{r}
+#Condition of Bridges
+Maryland_bridges<-Maryland_bridges %>%
+  mutate(decade=10*(yr_built %/% 10))
+  count(bridge_condition,sort=TRUE)
+
+#How does condition of a bridge depend upon date of construction ?
+Maryland_bridges%>%
+  count(yr_built,sort=TRUE)%>%
+  ggplot(aes(yr_built,n))+
+  geom_line()
+
+Maryland_bridges%>%
+  filter(yr_built>= 1900)%>%
+  mutate(decade=10*(yr_built %/% 10))%>%
+  count(decade,sort=TRUE)%>%
+  ggplot(aes(decade,n))+
+  geom_line()+
+  expand_limits(y=0)+
+  labs(y="Number of bridges built")
+  
+```
+How do condition of bridges built depend the decade? 
+
+```{r}
+Maryland_bridges%>%
+  filter(bridge_condition== "Poor")
+  count(Inspection_yr,sort=TRUE)
+```
+  
+  
+```{r}
+library(scales)
+Maryland_bridges <- Maryland_bridges%>%
+  mutate(decade=10*(yr_built %/% 10))
+
+Maryland_bridges%>%
+  filter(yr_built >= 1900)%>%
+  group_by(decade)%>%
+  summarise(pct_good=mean(bridge_condition=="Good"),
+                          total=n())%>%
+  ggplot(aes(decade,pct_good))+
+  geom_line()+
+  scale_y_continuous(labels=percent_format())+
+  expand_limits(y=0)
+
+```
+
+Whose is reposibel fo rteh mainatainanc eo fteh brdges ?
+```{r}
+Maryland_bridges%>%
+  filter(owner!= responsibility) 
+
+Maryland_bridges%>%
+  filter(!is.na(responsibility))%>%
+  count(responsibility,sort=TRUE)%>%
+  mutate(responsibility=reorder(responsibility,n))%>%
+  ggplot(aes(responsibility,n))+
+  geom_col()+
+  coord_flip()
+
+  
+  
+  
+
+
+
+```
+How does percent of good brdges vary acoss time acroos different stakeholders ?
+```{r}
+
+Maryland_bridges%>%
+  filter(yr_built >= 1900)%>%
+  group_by(responsibility =  fct_lump(responsibility,4),decade)%>%
+  summarise(pct_good=mean(bridge_condition=="Good"),
+                          total=n())%>%
+  filter(responsibility != "Other")%>%
+  ggplot(aes(decade,pct_good,color=responsibility))+
+  geom_line()+
+  scale_y_continuous(labels=percent_format())+
+  expand_limits(y=0)+
+  labs(y="% of Bridges rated 'Good")
+```
+```{r}
+#County highway authority had teh best bridges till 1970,after that every agency caught up except for Sattate tol authority
+
+Maryland_bridges%>%
+  ggplot(aes(avg_daily_traffic))+
+  geom_histogram()+
+  scale_x_log10(labels=comma_format())
+```
+```{r}
+#How does vehicl etraffic affcet bridge condition ?
+
+Maryland_bridges%>%
+  filter(yr_built>=1990)%>%
+  group_by(traffic=cut(avg_daily_traffic, c(0,1000,10000,Inf),labels("<1000",
+                                                                       "1000-10000",
+                                                                       ">10000+")))%>%
+  summarize(pct_good=mean(condition=="Good"),total=n())
+```
+
+
+```{r}
+Maryland_bridges%>%
+  mutate(responsibility=fct_lump(responsibility,4))%>%
+  ggplot(aes(long,lat,color=responsibility))+
+  annotation_borders("state",regions="maryland")+
+  coord_map()+
+  geom_point(size=1)+
+  theme_void()
+```
+```{r}
+Maryland_bridges%>%
+  ggplot(aes(long,lat,color=bridge_condition))+
+  annotation_borders("state",regions="maryland")+
+  coord_map()+
+  geom_point(size=1)+
+  theme_void()
+```
+```{r}
+Maryland_bridges%>%
+  ggplot(aes(long,lat,color=yr_built))+
+  annotation_borders("state",regions="maryland")+
+  coord_map()+
+  geom_point(size=1)+
+  theme_void()
+```
+```{r}
+Maryland_bridges%>%
+  ggplot(aes(long,lat,color=county))+
+  annotation_borders("state",regions="maryland")+
+  coord_map()+
+  geom_point(size=1)+
+  theme_void()
+```
+```{r}
+Maryland_bridges%>%
+  filter(yr_built>=1900)%>%
+  group_by(decade=10*(yr_built %/% 10),county)%>%
+  summarize(pct_good=mean(bridge_condition =="Good"),total=n())%>%
+  ggplot(aes(decade,pct_good,color=county))+
+  geom_line()+
+  scale_y_continuous(labels=label_percent())+
+  expand_limits(y=0)
+```
+##Effet of county resposiblity  on Bridge Condition 
+```{r}
+#OLS model
+Maryland_bridges%>%
+  mutate(good=bridge_condition=="Good")%>%
+  glm(good~yr_built,data=.)%>%
+  summary()
+
+#Logit Model
+library(broom)
+model<-Maryland_bridges%>%
+  mutate(good=bridge_condition=="Good")%>%
+  glm(good~yr_built,data=.,family="binomial")
+
+augment(model,Maryland_bridges,type.predict="response")%>%
+  ggplot(aes(yr_built,.fitted))+
+  geom_line()
+
+```
+```{r}
+#Spline model
+bridges <-Maryland_bridges%>%
+  filter(yr_built>=1900)
+  
+
+library(splines)
+model_S<-Maryland_bridges_filtered%>%
+  mutate(good=bridge_condition=="Good")%>%
+  glm(good~ns(yr_built,2),data=.,family="binomial")
+
+augment(model_S,,Maryland_bridges_filtered,type.predict="response")%>%
+  ggplot(aes(yr_built,.fitted))+
+  geom_line()
+```
+```{r}
+  model_T <- bridges %>%
+  mutate(good = bridge_condition == "Good") %>%
+  glm(good ~ ns(yr_built, 4) + responsibility + county, data = ., family = "binomial",na.action=na.exclude)
+
+augment(model_T, bridges, type.predict = "response") %>%
+  ggplot(aes(yr_built, .fitted,color=responsibility)) +
+  geom_line() +
+  expand_limits(y = 0) +
+  scale_y_continuous(labels = percent_format()) +
+  labs(y = "Predicted probability a bridge is rated 'Good'")
+```
+
+```
+
+
+ 
+  
+  
